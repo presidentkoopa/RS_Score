@@ -437,6 +437,35 @@ class RS_ScoreHandler : EventHandler
 		tr.AddScore(points);
 		tr.flashTic = level.maptime;
 
+		// PUBLISH GAINS TO THE NATIVE SCORE FIELD, AND ONLY GAINS. Actor.Score is a field
+		// the engine never uses for anything itself ("The engine doesn't use this itself
+		// for anything", src/playsim/actor.h:2372) -- it exists as a convention between
+		// mods, and a mod reading it is the whole point. Our own total stays on the
+		// tracker; this is a one-way mirror of what was earned, not a second copy that has
+		// to be kept in step with ours.
+		//
+		// NEVER SUBTRACT FROM IT, and the reason is that the readers of this convention
+		// take a RISE, not a total. Gun Bonsai baselines the field and pays weapon XP for
+		// the increase alone, once a tic
+		// (GunBonsai-Offhand-VR/ca.ancilla.bonsai/PerPlayerStats.zsc:1237-1270: `prevScore`,
+		// then `owner.score > prevScore`). A fall is invisible to it, so the points are
+		// simply lost; and to a reader that does hold a total, clawing points back makes XP
+		// it has already SPENT look like it vanished, or drives the field negative and
+		// poisons every other reader. So a negative payment, if a bonus ever manages to
+		// produce one, is ours to absorb on the tracker and is not published.
+		//
+		// DO NOT MISTAKE THIS FOR OUR RUNNING TOTAL, AND DO NOT READ IT BACK AS ONE. The
+		// engine hands the player a fresh pawn on every map and nothing in C++ copies Score
+		// onto it -- the only two writes are ACS SetActorProperty (src/playsim/p_acs.cpp:4268)
+		// and the mapthing's own score (src/playsim/p_mobj.cpp:7170) -- so the field is zero
+		// at every map start no matter what ScoreReset does, and ScoreReset has nothing to
+		// undo here. It outlives only a savegame and hub travel, where the pawn itself
+		// does. tr.displayScore is the total a player reads.
+		//
+		// The owner check is because an Inventory token in flight has none; the tracker is
+		// only ever given straight to a pawn, but a null here would be a VM abort.
+		if (points > 0 && tr.owner) { tr.owner.score += points; }
+
 		if (DebugOn())
 		{
 			Console.Printf("RS_Score: +%d -> %d (threshold %d) | rewards %d lives %d buddha %d regen %d",
